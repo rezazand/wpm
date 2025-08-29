@@ -177,68 +177,78 @@ func updatePowerShellProfile(proxyServer string, enable bool) error {
 }
 
 func main() {
-	// Get the default gateway IP.
-	gateway, err := getDefaultGateway()
-	if err != nil {
-		fmt.Printf("Error getting gateway: %v\n", err)
-		os.Exit(1)
-	}
-
-	proxyServer := fmt.Sprintf("%s:10808", gateway)
-	currentProxy, err := getCurrentProxy()
-	if err != nil {
-		fmt.Printf("Error reading proxy settings: %v\n", err)
-		os.Exit(1)
-	}
-
-	if currentProxy != "" {
-		if currentProxy == proxyServer {
-			// Disable proxy everywhere
-			if err := setProxySettings("", 0); err != nil {
-				fmt.Printf("Error clearing proxy: %v\n", err)
-				os.Exit(1)
-			}
-			if err := updatePowerShellProfile("", false); err != nil {
-				fmt.Printf("Error updating PowerShell profile: %v\n", err)
-				os.Exit(1)
-			}
-			if err := setVSCodeProxy("", false); err != nil {
-				fmt.Printf("Error updating VS Code proxy: %v\n", err)
-				os.Exit(1)
-			}
-			fmt.Println("Proxy settings cleared (system, PowerShell, VS Code)")
+	for {
+		// Get and display current proxy status
+		currentProxy, err := getCurrentProxy()
+		if err != nil {
+			fmt.Println("Proxy Status: Unknown (could not read settings)")
 		} else {
-			// Update proxy everywhere
-			if err := setProxySettings(proxyServer, 1); err != nil {
-				fmt.Printf("Error updating proxy: %v\n", err)
+			if currentProxy != "" {
+				fmt.Printf("Proxy Status: Active (%s)\n\n", currentProxy)
+			} else {
+				fmt.Println("Proxy Status: Inactive\n")
+			}
+		}
+
+		fmt.Println("Select an option:")
+		fmt.Println("1. Set/Update Proxy")
+		fmt.Println("2. Unset Proxy")
+		fmt.Println("3. Exit")
+		fmt.Print("Enter your choice: ")
+
+		var choice int
+		_, err = fmt.Scanln(&choice)
+		if err != nil {
+			fmt.Println("Invalid input. Please enter a number.\n")
+			// Clear scanner buffer
+			var temp string
+			fmt.Scanln(&temp)
+			continue
+		}
+
+		switch choice {
+		case 1:
+			// Set/Update Proxy
+			gateway, err := getDefaultGateway()
+			if err != nil {
+				fmt.Printf("Error getting gateway: %v\n", err)
 				os.Exit(1)
+			}
+			proxyServer := fmt.Sprintf("%s:10808", gateway)
+
+			if err := setProxySettings(proxyServer, 1); err != nil {
+				fmt.Printf("Error setting proxy: %v\n", err)
 			}
 			if err := updatePowerShellProfile(proxyServer, true); err != nil {
 				fmt.Printf("Error updating PowerShell profile: %v\n", err)
-				os.Exit(1)
 			}
 			if err := setVSCodeProxy(proxyServer, true); err != nil {
 				fmt.Printf("Error updating VS Code proxy: %v\n", err)
-				os.Exit(1)
 			}
-			fmt.Printf("Proxy updated to %s (system, PowerShell, VS Code)\n", proxyServer)
-		}
-	} else {
-		// Enable proxy everywhere
-		if err := setProxySettings(proxyServer, 1); err != nil {
-			fmt.Printf("Error setting proxy: %v\n", err)
-			os.Exit(1)
-		}
-		if err := updatePowerShellProfile(proxyServer, true); err != nil {
-			fmt.Printf("Error updating PowerShell profile: %v\n", err)
-			os.Exit(1)
-		}
-		if err := setVSCodeProxy(proxyServer, true); err != nil {
-			fmt.Printf("Error updating VS Code proxy: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Proxy set to %s (system, PowerShell, VS Code)\n", proxyServer)
-	}
+			fmt.Printf("Proxy set to %s (system, PowerShell, VS Code)\n", proxyServer)
+			fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
 
-	fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+		case 2:
+			// Unset Proxy
+			if err := setProxySettings("", 0); err != nil {
+				fmt.Printf("Error clearing proxy: %v\n", err)
+			}
+			if err := updatePowerShellProfile("", false); err != nil {
+				fmt.Printf("Error updating PowerShell profile: %v\n", err)
+			}
+			if err := setVSCodeProxy("", false); err != nil {
+				fmt.Printf("Error updating VS Code proxy: %v\n", err)
+			}
+			fmt.Println("Proxy settings cleared (system, PowerShell, VS Code)")
+			fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+
+		case 3:
+			fmt.Println("Exiting.")
+			return
+
+		default:
+			fmt.Println("Invalid choice. Please select a valid option.")
+		}
+		fmt.Println() // Add a newline for better spacing
+	}
 }
