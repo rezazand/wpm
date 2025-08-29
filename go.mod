@@ -1,4 +1,4 @@
-module proxy-manager
+module WPM
 
 go 1.22.0
 

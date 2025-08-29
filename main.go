@@ -6,9 +6,47 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"encoding/json"
+	"path/filepath"
 
 	"golang.org/x/sys/windows/registry"
 )
+// setVSCodeProxy sets or clears the proxy in VS Code's settings.json
+func setVSCodeProxy(proxyServer string, enable bool) error {
+	appData := os.Getenv("APPDATA")
+	settingsPath := filepath.Join(appData, "Code", "User", "settings.json")
+
+	settings := make(map[string]interface{})
+	if _, err := os.Stat(settingsPath); err == nil {
+		data, err := os.ReadFile(settingsPath)
+		if err == nil && len(data) > 0 {
+			_ = json.Unmarshal(data, &settings)
+		}
+	}
+
+	if enable {
+		settings["http.proxy"] = "http://" + proxyServer
+	} else {
+		if _, exists := settings["http.proxy"]; exists {
+			delete(settings, "http.proxy")
+		}
+	}
+
+	// Write back the updated settings, preserving all other keys
+	file, err := os.OpenFile(settingsPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(settings); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // getDefaultGateway finds the default gateway IP address by parsing the output of the 'route print' command.
 func getDefaultGateway() (string, error) {
@@ -146,7 +184,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The proxy server for the registry should not have a protocol prefix.
 	proxyServer := fmt.Sprintf("%s:10808", gateway)
 	currentProxy, err := getCurrentProxy()
 	if err != nil {
@@ -154,11 +191,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// This logic toggles the proxy. If it's on, it turns it off. If it's off, it turns it on.
-	// It also handles updating the proxy if the gateway IP has changed.
 	if currentProxy != "" {
 		if currentProxy == proxyServer {
-			// Current setting matches, so we disable the proxy.
+			// Disable proxy everywhere
 			if err := setProxySettings("", 0); err != nil {
 				fmt.Printf("Error clearing proxy: %v\n", err)
 				os.Exit(1)
@@ -167,9 +202,13 @@ func main() {
 				fmt.Printf("Error updating PowerShell profile: %v\n", err)
 				os.Exit(1)
 			}
-			fmt.Println("Proxy settings cleared")
+			if err := setVSCodeProxy("", false); err != nil {
+				fmt.Printf("Error updating VS Code proxy: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("Proxy settings cleared (system, PowerShell, VS Code)")
 		} else {
-			// A different proxy is set, so we update it to the correct one.
+			// Update proxy everywhere
 			if err := setProxySettings(proxyServer, 1); err != nil {
 				fmt.Printf("Error updating proxy: %v\n", err)
 				os.Exit(1)
@@ -178,10 +217,14 @@ func main() {
 				fmt.Printf("Error updating PowerShell profile: %v\n", err)
 				os.Exit(1)
 			}
-			fmt.Printf("Proxy updated to %s\n", proxyServer)
+			if err := setVSCodeProxy(proxyServer, true); err != nil {
+				fmt.Printf("Error updating VS Code proxy: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Proxy updated to %s (system, PowerShell, VS Code)\n", proxyServer)
 		}
 	} else {
-		// No proxy is set, so we enable it.
+		// Enable proxy everywhere
 		if err := setProxySettings(proxyServer, 1); err != nil {
 			fmt.Printf("Error setting proxy: %v\n", err)
 			os.Exit(1)
@@ -190,7 +233,11 @@ func main() {
 			fmt.Printf("Error updating PowerShell profile: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Proxy set to %s\n", proxyServer)
+		if err := setVSCodeProxy(proxyServer, true); err != nil {
+			fmt.Printf("Error updating VS Code proxy: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Proxy set to %s (system, PowerShell, VS Code)\n", proxyServer)
 	}
 
 	fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
