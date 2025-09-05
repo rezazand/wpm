@@ -176,6 +176,55 @@ func updatePowerShellProfile(proxyServer string, enable bool) error {
 	return nil
 }
 
+// setNpmProxy sets or clears the proxy in the .npmrc file
+func setNpmProxy(proxyServer string, enable bool) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("could not get user home directory: %v", err)
+	}
+	
+	npmrcPath := filepath.Join(homeDir, ".npmrc")
+	
+	var lines []string
+	
+	// Read existing .npmrc if it exists
+	if _, err := os.Stat(npmrcPath); err == nil {
+		content, err := os.ReadFile(npmrcPath)
+		if err != nil {
+			return fmt.Errorf("could not read .npmrc: %v", err)
+		}
+		lines = strings.Split(string(content), "\n")
+	}
+	
+	// Remove existing proxy lines
+	var newLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "proxy=") && 
+		   trimmed != "" {
+			newLines = append(newLines, strings.TrimRight(line, "\r"))
+		}
+	}
+	
+	// Add proxy lines if enabling
+	if enable {
+		newLines = append(newLines, fmt.Sprintf("proxy=http://%s", proxyServer))
+	}
+	
+	// Write back to .npmrc
+	content := strings.Join(newLines, "\n")
+	if len(newLines) > 0 {
+		content += "\n"
+	}
+	
+	err = os.WriteFile(npmrcPath, []byte(content), 0644)
+	if err != nil {
+		return fmt.Errorf("could not write .npmrc: %v", err)
+	}
+	
+	return nil
+}
+
 func main() {
     for {
         // Get and display current proxy status
@@ -275,7 +324,10 @@ func main() {
             if err := setVSCodeProxy(proxyServer, true); err != nil {
                 fmt.Printf("Error updating VS Code proxy: %v\n", err)
             }
-            fmt.Printf("Proxy set to %s (system, PowerShell, VS Code)\n", proxyServer)
+            if err := setNpmProxy(proxyServer, true); err != nil {
+                fmt.Printf("Error updating npm proxy: %v\n", err)
+            }
+            fmt.Printf("Proxy set to %s (system, PowerShell, VS Code, npm)\n", proxyServer)
             fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
 
         case 2:
@@ -289,7 +341,10 @@ func main() {
             if err := setVSCodeProxy("", false); err != nil {
                 fmt.Printf("Error updating VS Code proxy: %v\n", err)
             }
-            fmt.Println("Proxy settings cleared (system, PowerShell, VS Code)")
+            if err := setNpmProxy("", false); err != nil {
+                fmt.Printf("Error updating npm proxy: %v\n", err)
+            }
+            fmt.Println("Proxy settings cleared (system, PowerShell, VS Code, npm)")
             fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
 
         case 3:
