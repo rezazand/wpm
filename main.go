@@ -180,11 +180,24 @@ func main() {
     for {
         // Get and display current proxy status
         currentProxy, err := getCurrentProxy()
+        gateway, gwErr := getDefaultGateway() // Get gateway to determine tag
+
         if err != nil {
             fmt.Println("Proxy Status: Unknown (could not read settings)")
         } else {
             if currentProxy != "" {
-                fmt.Printf("Proxy Status: Active (%s)\n\n", currentProxy)
+                var tag string
+                // Extract IP from "IP:port"
+                proxyIP := strings.Split(currentProxy, ":")[0]
+
+                if gwErr == nil && proxyIP == gateway {
+                    tag = " (Gateway)"
+                } else if proxyIP == "127.0.0.1" {
+                    tag = " (Localhost)"
+                } else {
+                    tag = " (Custom)"
+                }
+                fmt.Printf("Proxy Status: Active (%s)%s\n\n", currentProxy, tag)
             } else {
                 fmt.Println("Proxy Status: Inactive\n")
             }
@@ -210,9 +223,9 @@ func main() {
         case 1:
             // Set/Update Proxy
             var proxyServer string
-            gateway, err := getDefaultGateway()
-            if err != nil {
-                fmt.Printf("Warning: Could not determine default gateway: %v\n", err)
+            // Use the gateway fetched earlier
+            if gwErr != nil {
+                fmt.Printf("Warning: Could not determine default gateway: %v\n", gwErr)
                 gateway = "unavailable"
             }
 
