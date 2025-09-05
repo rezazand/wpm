@@ -1,13 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
-	"encoding/json"
-	"path/filepath"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -177,78 +177,115 @@ func updatePowerShellProfile(proxyServer string, enable bool) error {
 }
 
 func main() {
-	for {
-		// Get and display current proxy status
-		currentProxy, err := getCurrentProxy()
-		if err != nil {
-			fmt.Println("Proxy Status: Unknown (could not read settings)")
-		} else {
-			if currentProxy != "" {
-				fmt.Printf("Proxy Status: Active (%s)\n\n", currentProxy)
-			} else {
-				fmt.Println("Proxy Status: Inactive\n")
-			}
-		}
+    for {
+        // Get and display current proxy status
+        currentProxy, err := getCurrentProxy()
+        if err != nil {
+            fmt.Println("Proxy Status: Unknown (could not read settings)")
+        } else {
+            if currentProxy != "" {
+                fmt.Printf("Proxy Status: Active (%s)\n\n", currentProxy)
+            } else {
+                fmt.Println("Proxy Status: Inactive\n")
+            }
+        }
 
-		fmt.Println("Select an option:")
-		fmt.Println("1. Set/Update Proxy")
-		fmt.Println("2. Unset Proxy")
-		fmt.Println("3. Exit")
-		fmt.Print("Enter your choice: ")
+        fmt.Println("Select an option:")
+        fmt.Println("1. Set/Update Proxy")
+        fmt.Println("2. Unset Proxy")
+        fmt.Println("3. Exit")
+        fmt.Print("Enter your choice: ")
 
-		var choice int
-		_, err = fmt.Scanln(&choice)
-		if err != nil {
-			fmt.Println("Invalid input. Please enter a number.\n")
-			// Clear scanner buffer
-			var temp string
-			fmt.Scanln(&temp)
-			continue
-		}
+        var choice int
+        _, err = fmt.Scanln(&choice)
+        if err != nil {
+            fmt.Println("Invalid input. Please enter a number.\n")
+            // Clear scanner buffer
+            var temp string
+            fmt.Scanln(&temp)
+            continue
+        }
 
-		switch choice {
-		case 1:
-			// Set/Update Proxy
-			gateway, err := getDefaultGateway()
-			if err != nil {
-				fmt.Printf("Error getting gateway: %v\n", err)
-				os.Exit(1)
-			}
-			proxyServer := fmt.Sprintf("%s:10808", gateway)
+        switch choice {
+        case 1:
+            // Set/Update Proxy
+            var proxyServer string
+            gateway, err := getDefaultGateway()
+            if err != nil {
+                fmt.Printf("Warning: Could not determine default gateway: %v\n", err)
+                gateway = "unavailable"
+            }
 
-			if err := setProxySettings(proxyServer, 1); err != nil {
-				fmt.Printf("Error setting proxy: %v\n", err)
-			}
-			if err := updatePowerShellProfile(proxyServer, true); err != nil {
-				fmt.Printf("Error updating PowerShell profile: %v\n", err)
-			}
-			if err := setVSCodeProxy(proxyServer, true); err != nil {
-				fmt.Printf("Error updating VS Code proxy: %v\n", err)
-			}
-			fmt.Printf("Proxy set to %s (system, PowerShell, VS Code)\n", proxyServer)
-			fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+            fmt.Println("\nSelect proxy configuration:")
+            fmt.Printf("1. Default Gateway (%s:10808)\n", gateway)
+            fmt.Println("2. Localhost (127.0.0.1:10808)")
+            fmt.Println("3. Custom IP:Port")
+            fmt.Println("4. Back to main menu")
+            fmt.Print("Enter your choice: ")
 
-		case 2:
-			// Unset Proxy
-			if err := setProxySettings("", 0); err != nil {
-				fmt.Printf("Error clearing proxy: %v\n", err)
-			}
-			if err := updatePowerShellProfile("", false); err != nil {
-				fmt.Printf("Error updating PowerShell profile: %v\n", err)
-			}
-			if err := setVSCodeProxy("", false); err != nil {
-				fmt.Printf("Error updating VS Code proxy: %v\n", err)
-			}
-			fmt.Println("Proxy settings cleared (system, PowerShell, VS Code)")
-			fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+            var proxyChoice int
+            _, err = fmt.Scanln(&proxyChoice)
+            if err != nil {
+                fmt.Println("Invalid input. Please enter a number.\n")
+                continue
+            }
 
-		case 3:
-			fmt.Println("Exiting.")
-			return
+            switch proxyChoice {
+            case 1:
+                if gateway == "unavailable" {
+                    fmt.Println("Cannot use default gateway as it could not be determined. Please choose another option.")
+                    continue
+                }
+                proxyServer = fmt.Sprintf("%s:10808", gateway)
+            case 2:
+                proxyServer = "127.0.0.1:10808"
+            case 3:
+                fmt.Print("Enter custom IP:Port (e.g., 192.168.1.1:8080): ")
+                _, err := fmt.Scanln(&proxyServer)
+                if err != nil || proxyServer == "" {
+                    fmt.Println("Invalid input.")
+                    continue
+                }
+            case 4:
+                continue // Go back to the main menu
+            default:
+                fmt.Println("Invalid choice. Please select a valid option.")
+                continue
+            }
 
-		default:
-			fmt.Println("Invalid choice. Please select a valid option.")
-		}
-		fmt.Println() // Add a newline for better spacing
-	}
+            if err := setProxySettings(proxyServer, 1); err != nil {
+                fmt.Printf("Error setting proxy: %v\n", err)
+            }
+            if err := updatePowerShellProfile(proxyServer, true); err != nil {
+                fmt.Printf("Error updating PowerShell profile: %v\n", err)
+            }
+            if err := setVSCodeProxy(proxyServer, true); err != nil {
+                fmt.Printf("Error updating VS Code proxy: %v\n", err)
+            }
+            fmt.Printf("Proxy set to %s (system, PowerShell, VS Code)\n", proxyServer)
+            fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+
+        case 2:
+            // Unset Proxy
+            if err := setProxySettings("", 0); err != nil {
+                fmt.Printf("Error clearing proxy: %v\n", err)
+            }
+            if err := updatePowerShellProfile("", false); err != nil {
+                fmt.Printf("Error updating PowerShell profile: %v\n", err)
+            }
+            if err := setVSCodeProxy("", false); err != nil {
+                fmt.Printf("Error updating VS Code proxy: %v\n", err)
+            }
+            fmt.Println("Proxy settings cleared (system, PowerShell, VS Code)")
+            fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+
+        case 3:
+            fmt.Println("Exiting.")
+            return
+
+        default:
+            fmt.Println("Invalid choice. Please select a valid option.")
+        }
+        fmt.Println() // Add a newline for better spacing
+    }
 }
