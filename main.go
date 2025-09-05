@@ -11,6 +11,22 @@ import (
 
 	"golang.org/x/sys/windows/registry"
 )
+
+// Environment constants
+const (
+	ENV_SYSTEM     = 1 << iota // 1
+	ENV_POWERSHELL            // 2
+	ENV_VSCODE                // 4
+	ENV_NPM                   // 8
+)
+
+var envNames = map[int]string{
+	ENV_SYSTEM:     "System Registry",
+	ENV_POWERSHELL: "PowerShell Profile",
+	ENV_VSCODE:     "VS Code",
+	ENV_NPM:        "npm",
+}
+
 // setVSCodeProxy sets or clears the proxy in VS Code's settings.json
 func setVSCodeProxy(proxyServer string, enable bool) error {
 	appData := os.Getenv("APPDATA")
@@ -225,6 +241,118 @@ func setNpmProxy(proxyServer string, enable bool) error {
 	return nil
 }
 
+// parseEnvironmentSelection parses user input for environment selection
+func parseEnvironmentSelection(input string) int {
+	input = strings.TrimSpace(input)
+	if input == "" || strings.ToLower(input) == "a" {
+		return ENV_SYSTEM | ENV_POWERSHELL | ENV_VSCODE | ENV_NPM // All environments
+	}
+
+	selectedEnvs := 0
+	for _, char := range input {
+		switch char {
+		case '1':
+			selectedEnvs |= ENV_SYSTEM
+		case '2':
+			selectedEnvs |= ENV_POWERSHELL
+		case '3':
+			selectedEnvs |= ENV_VSCODE
+		case '4':
+			selectedEnvs |= ENV_NPM
+		}
+	}
+
+	return selectedEnvs
+}
+
+// displaySelectedEnvironments shows which environments are selected
+func displaySelectedEnvironments(envMask int) {
+	if envMask == 0 {
+		fmt.Println("No environments selected.")
+		return
+	}
+
+	fmt.Print("Selected environments: ")
+	var selected []string
+	
+	if envMask&ENV_SYSTEM != 0 {
+		selected = append(selected, envNames[ENV_SYSTEM])
+	}
+	if envMask&ENV_POWERSHELL != 0 {
+		selected = append(selected, envNames[ENV_POWERSHELL])
+	}
+	if envMask&ENV_VSCODE != 0 {
+		selected = append(selected, envNames[ENV_VSCODE])
+	}
+	if envMask&ENV_NPM != 0 {
+		selected = append(selected, envNames[ENV_NPM])
+	}
+	
+	fmt.Println(strings.Join(selected, ", "))
+}
+
+// applyProxySettings applies proxy settings to selected environments
+func applyProxySettings(proxyServer string, enable bool, envMask int) {
+	var errors []string
+	var success []string
+
+	if envMask&ENV_SYSTEM != 0 {
+		var enableInt int
+		if enable {
+			enableInt = 1
+		}
+		if err := setProxySettings(proxyServer, enableInt); err != nil {
+			errors = append(errors, fmt.Sprintf("System Registry: %v", err))
+		} else {
+			success = append(success, "System Registry")
+		}
+	}
+
+	if envMask&ENV_POWERSHELL != 0 {
+		if err := updatePowerShellProfile(proxyServer, enable); err != nil {
+			errors = append(errors, fmt.Sprintf("PowerShell Profile: %v", err))
+		} else {
+			success = append(success, "PowerShell Profile")
+		}
+	}
+
+	if envMask&ENV_VSCODE != 0 {
+		if err := setVSCodeProxy(proxyServer, enable); err != nil {
+			errors = append(errors, fmt.Sprintf("VS Code: %v", err))
+		} else {
+			success = append(success, "VS Code")
+		}
+	}
+
+	if envMask&ENV_NPM != 0 {
+		if err := setNpmProxy(proxyServer, enable); err != nil {
+			errors = append(errors, fmt.Sprintf("npm: %v", err))
+		} else {
+			success = append(success, "npm")
+		}
+	}
+
+	// Display results
+	if len(success) > 0 {
+		action := "set"
+		if !enable {
+			action = "cleared"
+		}
+		fmt.Printf("✓ Proxy %s successfully for: %s\n", action, strings.Join(success, ", "))
+	}
+
+	if len(errors) > 0 {
+		fmt.Println("\n⚠ Errors occurred:")
+		for _, err := range errors {
+			fmt.Printf("  - %s\n", err)
+		}
+	}
+
+	if envMask&ENV_POWERSHELL != 0 {
+		fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+	}
+}
+
 func main() {
     for {
         // Get and display current proxy status
@@ -303,7 +431,7 @@ func main() {
                 proxyServer = "127.0.0.1:10808"
             case 3:
                 fmt.Print("Enter custom IP:Port (e.g., 192.168.1.1:8080): ")
-                _, err := fmt.Scanln(&proxyServer)
+               	_, err := fmt.Scanln(&proxyServer)
                 if err != nil || proxyServer == "" {
                     fmt.Println("Invalid input.")
                     continue
@@ -315,37 +443,58 @@ func main() {
                 continue
             }
 
-            if err := setProxySettings(proxyServer, 1); err != nil {
-                fmt.Printf("Error setting proxy: %v\n", err)
+            // Environment Selection
+            fmt.Println("\n🎯 Select environments to configure:")
+            fmt.Println("1. System Registry")
+            fmt.Println("2. PowerShell Profile") 
+            fmt.Println("3. VS Code")
+            fmt.Println("4. npm")
+            fmt.Println("\n📝 Input options:")
+            fmt.Println("- Press ENTER or type 'A' for ALL environments")
+            fmt.Println("- Type numbers for specific environments (e.g., '13' for System + VS Code, '24' for PowerShell + npm)")
+            fmt.Print("\nYour selection: ")
+
+            var envInput string
+            fmt.Scanln(&envInput)
+            
+            selectedEnvs := parseEnvironmentSelection(envInput)
+            if selectedEnvs == 0 {
+                fmt.Println("No valid environments selected. Please try again.")
+                continue
             }
-            if err := updatePowerShellProfile(proxyServer, true); err != nil {
-                fmt.Printf("Error updating PowerShell profile: %v\n", err)
-            }
-            if err := setVSCodeProxy(proxyServer, true); err != nil {
-                fmt.Printf("Error updating VS Code proxy: %v\n", err)
-            }
-            if err := setNpmProxy(proxyServer, true); err != nil {
-                fmt.Printf("Error updating npm proxy: %v\n", err)
-            }
-            fmt.Printf("Proxy set to %s (system, PowerShell, VS Code, npm)\n", proxyServer)
-            fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+
+            fmt.Println()
+            displaySelectedEnvironments(selectedEnvs)
+            fmt.Printf("Setting proxy to: %s\n", proxyServer)
+            
+            applyProxySettings(proxyServer, true, selectedEnvs)
 
         case 2:
             // Unset Proxy
-            if err := setProxySettings("", 0); err != nil {
-                fmt.Printf("Error clearing proxy: %v\n", err)
+            fmt.Println("\n🎯 Select environments to clear proxy from:")
+            fmt.Println("1. System Registry")
+            fmt.Println("2. PowerShell Profile")
+            fmt.Println("3. VS Code") 
+            fmt.Println("4. npm")
+            fmt.Println("\n📝 Input options:")
+            fmt.Println("- Press ENTER or type 'A' for ALL environments")
+            fmt.Println("- Type numbers for specific environments (e.g., '13' for System + VS Code, '24' for PowerShell + npm)")
+            fmt.Print("\nYour selection: ")
+
+            var envInput string
+            fmt.Scanln(&envInput)
+            
+            selectedEnvs := parseEnvironmentSelection(envInput)
+            if selectedEnvs == 0 {
+                fmt.Println("No valid environments selected. Please try again.")
+                continue
             }
-            if err := updatePowerShellProfile("", false); err != nil {
-                fmt.Printf("Error updating PowerShell profile: %v\n", err)
-            }
-            if err := setVSCodeProxy("", false); err != nil {
-                fmt.Printf("Error updating VS Code proxy: %v\n", err)
-            }
-            if err := setNpmProxy("", false); err != nil {
-                fmt.Printf("Error updating npm proxy: %v\n", err)
-            }
-            fmt.Println("Proxy settings cleared (system, PowerShell, VS Code, npm)")
-            fmt.Println("\nIMPORTANT: You must open a new PowerShell window for changes to take effect.")
+
+            fmt.Println()
+            displaySelectedEnvironments(selectedEnvs)
+            fmt.Println("Clearing proxy settings...")
+            
+            applyProxySettings("", false, selectedEnvs)
 
         case 3:
             fmt.Println("Exiting.")
